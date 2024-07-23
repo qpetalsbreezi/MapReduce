@@ -4,7 +4,7 @@ defmodule Mapreduce do
   """
 
   @doc """
-  Hello world.
+  Hello world
 
   ## Examples
 
@@ -38,4 +38,36 @@ defmodule Mapreduce do
   def sample_mapper(string_collection) do
     Enum.map(string_collection, fn str -> {str, 1} end)
   end
+end
+
+list = ["apple", "banana", "orange", "mango", "strawberries", "blueberries", "strawberries", "apple", "apple", "apple"]
+count = length(list)
+
+def setToMax(file_path) do
+  if count >= 5000 
+    count = 5000
+end
+
+def split(file_path) do
+  chunks_of_5 = Enum.chunk_every(list, 5)
+  Enum.map(chunks, fn chunk ->
+      length = div(length(chunk), 5)
+      Enum.chunk_every(chunk, length)
+    end)
+end
+
+
+
+def remove_special_chars(file_path) do
+  file_path
+  File.read!()
+  String.replace(".|!|?|,", "")
+  File.write!(file_path)
+end
+
+def to_lowercase(file_path) do
+  file_path
+  File.read!()
+  String.downcase()
+  File.write!(file_path)
 end
