@@ -21,21 +21,40 @@ defmodule Mapreduce do
     stream
   end
 
-  def solve(mapper_func, reducer_func, data \\ from_file ) do
-    # files_dump =
-    #   Stream.map(file_path_collection, fn file_path ->
-    #     # take the file path. convert it to the data the file has
-    #     from_file(file_path)
-    #   end)
+  def solve(mapper_func, reducer_func, data \\ from_file() ) do
+    string_collections =
+      Stream.map(data, fn line -> String.split(line, " ") end)
+      |> Stream.map(fn strings -> remove_special_chars(strings) end)
+      |> Stream.map(fn strings -> to_lowercase(strings) end)
 
-    collection_of_strings =
-      Stream.map(files_dump, fn str -> String.split(str, " ") end)
-      |> Enum.map(fn strings -> remove_special_chars(strings) end)
-      |> Enum.map(fn strings -> to_lowercase(strings) end)
+      string_collections |> Enum.into([]) |> IO.inspect()
 
-    Enum.map(collection_of_strings, mapper_func)
+    scheduler_pid = Process.spawn(fn -> schedule() end)
+    send({:run, string_collections, mapper_func})
+
+    # Stream.map(string_collections, mapper_func)
+    # |> Enum.into([])
   end
 
+  def schedule(state \\ %{}) do
+    scheduler_pid = self()
+    receive do
+      {:run, string_collections, mapper_func} ->
+        Enum.map(string_collections, fn strings ->
+          # TODO:
+          # create a process.
+          # run sample_mapper inside the process
+          # send a messsage back to scheduler_pid containing the result
+        end)
+        schedule(state)
+      {:result, result} ->
+        nil
+        # TODO: add this to the state. Call the function again with the new state
+    end
+
+  end
+
+  @spec sample_mapper(any()) :: list()
   def sample_mapper(string_collection) do
     Enum.map(string_collection, fn str -> {str, 1} end)
   end
@@ -73,7 +92,7 @@ defmodule Mapreduce do
     strings
     |> Enum.map(fn string ->
       string
-      |> String.replace(~r/[.!?,]/, "") # needs to be fixed
+      |> String.replace(~r/[.!?,\n]/, "") # needs to be fixed
     end)
   end
 
