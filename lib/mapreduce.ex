@@ -3,22 +3,13 @@ defmodule Mapreduce do
   Documentation for `Mapreduce`.
   """
 
-  @doc """
-  Hello world
-
-  ## Examples
-
-      iex> Mapreduce.hello()
-      :world
-
-  """
-  def hello do
-    :world
-  end
-
   def from_file(file_path \\ "sample.txt") do
     stream = File.stream!(file_path)
     stream
+  end
+
+  def sample_solve() do
+    solve(&sample_mapper/1, nil)
   end
 
   def solve(mapper_func, reducer_func, data \\ from_file() ) do
@@ -27,31 +18,55 @@ defmodule Mapreduce do
       |> Stream.map(fn strings -> remove_special_chars(strings) end)
       |> Stream.map(fn strings -> to_lowercase(strings) end)
 
-      string_collections |> Enum.into([]) |> IO.inspect()
+      string_collections |> Enum.into([])
 
-    scheduler_pid = Process.spawn(fn -> schedule() end)
-    send({:run, string_collections, mapper_func})
+    final_result = schedule(string_collections |> Enum.into([]), mapper_func)
+    IO.puts("final result is: ")
+    IO.inspect(final_result)
 
-    # Stream.map(string_collections, mapper_func)
-    # |> Enum.into([])
+    Enum.map(final_result, fn result ->
+      Enum.map(result, fn {key, value} ->
+        index = :crypto.hash(:sha, key) |> Base.encode16() |> Integer.parse() |> elem(0) |> Integer.mod(5)
+
+        # TODO: fix me
+        {:ok, file} = File.open("intermediary/#{index}.txt", [:append])
+        IO.puts("opened file.")
+        IO.inspect(file)
+        IO.binwrite(file, {key, value})
+      end)
+    end)
+
+    # TODO: Go through the responses, assign them to reducers
   end
 
-  def schedule(state \\ %{}) do
+  def schedule(string_collections, mapper_func) do
     scheduler_pid = self()
-    receive do
-      {:run, string_collections, mapper_func} ->
-        Enum.map(string_collections, fn strings ->
-          # TODO:
-          # create a process.
-          # run sample_mapper inside the process
-          # send a messsage back to scheduler_pid containing the result
+    scheduler_loop_pid = spawn(fn -> scheduler_loop(%{responses: [], pending: length(string_collections)}, scheduler_pid) end)
+      Enum.map(string_collections, fn strings ->
+        _pid = spawn(fn ->
+          result = mapper_func.(strings)
+          send(scheduler_loop_pid, {:result, result})
         end)
-        schedule(state)
-      {:result, result} ->
-        nil
-        # TODO: add this to the state. Call the function again with the new state
+      end)
+
+      receive do
+        final_result -> final_result
+      end
+  end
+
+  def scheduler_loop(%{responses: responses, pending: pending}, caller_pid) do
+    if pending == 0 do
+      send(caller_pid, responses)
     end
 
+    receive do
+      {:result, result} ->
+        new_state = %{responses: [result | responses], pending: pending - 1}
+        IO.puts("new_state is:")
+        IO.inspect(new_state)
+
+        scheduler_loop(new_state, caller_pid)
+    end
   end
 
   @spec sample_mapper(any()) :: list()
