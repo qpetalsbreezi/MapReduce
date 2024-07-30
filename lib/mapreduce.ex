@@ -20,7 +20,10 @@ defmodule Mapreduce do
 
       string_collections |> Enum.into([])
 
-    intermediary_key_values = schedule(string_collections |> Enum.into([]), mapper_func)
+    {:ok, map_scheduler} = Scheduler.start_link()
+    intermediary_key_values = Scheduler.schedule(map_scheduler, string_collections |> Enum.into([]), mapper_func)
+
+
     IO.puts("intermediary_key_values: ")
     IO.inspect(intermediary_key_values)
 
@@ -84,37 +87,6 @@ defmodule Mapreduce do
     end
   end
 
-
-  def schedule(string_collections, mapper_func) do
-    scheduler_pid = self()
-    scheduler_loop_pid = spawn(fn -> scheduler_loop(%{responses: [], pending: length(string_collections)}, scheduler_pid) end)
-      Enum.map(string_collections, fn strings ->
-        _pid = spawn(fn ->
-          result = mapper_func.(strings)
-          send(scheduler_loop_pid, {:result, result})
-        end)
-      end)
-
-      receive do
-        final_result -> final_result
-      end
-  end
-
-  def scheduler_loop(%{responses: responses, pending: pending}, caller_pid) do
-    if pending == 0 do
-      send(caller_pid, responses)
-    end
-
-    receive do
-      {:result, result} ->
-        new_state = %{responses: [result | responses], pending: pending - 1}
-        IO.puts("new_state is:")
-        IO.inspect(new_state)
-
-        scheduler_loop(new_state, caller_pid)
-    end
-  end
-
   @spec sample_mapper(any()) :: list()
   def sample_mapper(string_collection) do
     Enum.map(string_collection, fn str -> {str, 1} end)
@@ -125,35 +97,6 @@ defmodule Mapreduce do
       Map.update(acc, key, value, fn existing_value -> existing_value + value end)
     end )
   end
-
-  list = [
-    "apple",
-    "banana",
-    "orange",
-    "mango",
-    "strawberries",
-    "blueberries",
-    "strawberries",
-    "apple",
-    "apple",
-    "apple"
-  ]
-
-  count = length(list)
-
-  # def setToMax(file_path) do
-  #   if(count >= 5000)
-  #   count = 5000
-  # end
-
-  # def split(file_path) do
-  #   chunks_of_5 = Enum.chunk_every(list, 5)
-
-  #   Enum.map(chunks, fn chunk ->
-  #     length = div(length(chunk), 5)
-  #     Enum.chunk_every(chunk, length)
-  #   end)
-  # end
 
   def remove_special_chars(strings) do
     strings
@@ -171,42 +114,3 @@ defmodule Mapreduce do
     end)
   end
 end
-
-
-  def start_link(string_collections, mapper_func) do
-    GenServer.start_link(__MODULE__, {string_collections, mapper_func})
-  end
-  
-  def get_results do
-    GenServer.call(__MODULE__, :get_results)
-  end
-  
-  @impl true
-  def init({string_collections, mapper_func}) do
-    initial_state = %{responses: [], pending: length(string_collections), mapper_func: mapper_func}
-    
-    Enum.each(string_collections, fn strings ->
-      spawn(fn ->
-        result = mapper_func(strings)
-        GenServer.cast(__MODULE__, {:result, result})
-      end)
-    end)
-    
-    {:ok, state}
-  end
-  
-  @impl true
-  def handle_cast({:result, result}, %{responses: responses, pending: pending} = state) do
-    new_state = %{state | responses: [result | responses, pending: pending - 1]}
-    
-    if new_state.pending == 0 do
-      Genserver.reply(__MODULE__, new_state.responses)
-    end
-    
-    {:noreply, new_state}
-  end
-  
-  @impl true
-  def handle_call(:get_results, _from, %{responses: respones, pending: 0}) do
-    {:reply, responses, %{responses: [], pending: 0}}
-  end
