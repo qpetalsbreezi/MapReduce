@@ -171,3 +171,42 @@ defmodule Mapreduce do
     end)
   end
 end
+
+
+  def start_link(string_collections, mapper_func) do
+    GenServer.start_link(__MODULE__, {string_collections, mapper_func})
+  end
+  
+  def get_results do
+    GenServer.call(__MODULE__, :get_results)
+  end
+  
+  @impl true
+  def init({string_collections, mapper_func}) do
+    initial_state = %{responses: [], pending: length(string_collections), mapper_func: mapper_func}
+    
+    Enum.each(string_collections, fn strings ->
+      spawn(fn ->
+        result = mapper_func(strings)
+        GenServer.cast(__MODULE__, {:result, result})
+      end)
+    end)
+    
+    {:ok, state}
+  end
+  
+  @impl true
+  def handle_cast({:result, result}, %{responses: responses, pending: pending} = state) do
+    new_state = %{state | responses: [result | responses, pending: pending - 1]}
+    
+    if new_state.pending == 0 do
+      Genserver.reply(__MODULE__, new_state.responses)
+    end
+    
+    {:noreply, new_state}
+  end
+  
+  @impl true
+  def handle_call(:get_results, _from, %{responses: respones, pending: 0}) do
+    {:reply, responses, %{responses: [], pending: 0}}
+  end
