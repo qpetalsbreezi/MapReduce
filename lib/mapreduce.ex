@@ -12,6 +12,10 @@ defmodule Mapreduce do
     solve(&sample_mapper/1, nil)
   end
 
+  def solve_word_count(file_path) do
+    solve(&sample_mapper/1, &sample_reducer/1, from_file(file_path))
+  end
+
   def solve(mapper_func, _reducer_func, data \\ from_file() ) do
     string_collections =
       Stream.map(data, fn line -> String.split(line, " ") end)
